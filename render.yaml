@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: interview-timestamps-editor
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: shared-projects
+      mountPath: /var/data
+      sizeGB: 10

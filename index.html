@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interview Timestamps Editor</title>
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-waveform-16x16.png?v=20260323b" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-waveform-32x32.png?v=20260323b" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-waveform.png?v=20260323b" />
+    <link rel="stylesheet" href="/styles.css?v=20260324a" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="landing-panel" class="landing-panel">
+        <p class="eyebrow">Interview Timestamps Editor</p>
+        <h1 class="page-title">Upload audio and transcript</h1>
+        <div class="upload-grid" aria-label="Required uploads">
+          <article class="upload-card"><button id="audio-upload-btn" class="primary-btn upload-btn" type="button">Upload audio</button><p id="audio-file-name" class="upload-file-name" aria-live="polite"></p></article>
+
+          <article class="upload-card"><button id="transcript-upload-btn" class="primary-btn upload-btn" type="button">Upload transcript</button><p id="transcript-file-name" class="upload-file-name" aria-live="polite"></p></article>
+        </div>
+
+        <input id="audio-input" type="file" accept="audio/*,video/*,.mp4,.mov,.m4v,.webm,.m4a,.mp3,.wav" hidden />
+        <input id="transcript-input" type="file" accept=".txt,.srt,.vtt,text/plain" hidden />
+        <p id="landing-status-message" class="status-message hidden" aria-live="polite"></p>
+      </section>
+
+      <section id="workspace" class="workspace hidden" aria-live="polite">
+        <section class="panel audio-panel">
+          <div class="section-heading">
+            <div>
+              <button id="project-title-btn" class="project-title-btn" type="button" aria-label="Edit project name"></button>
+              <input id="project-title-input" class="project-title-input hidden" type="text" aria-label="Project name" />
+              <button id="speaker-summary-btn" class="speaker-summary-btn hidden" type="button" aria-label="Edit speaker names"></button>
+            </div>
+            <div class="section-actions">
+              <button id="start-over-btn" class="ghost-btn danger-btn" type="button">Start over</button>
+            </div>
+          </div>
+          <div class="audio-player-shell">
+            <button id="audio-play-btn" class="audio-control-btn" type="button" aria-label="Play audio" title="Play audio">
+              <svg id="audio-play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M8 6l10 6-10 6z" />
+              </svg>
+            </button>
+            <div id="audio-time-label" class="audio-time-label">00:00 / 00:00</div>
+            <input id="audio-scrubber" class="audio-scrubber" type="range" min="0" max="1" step="0.01" value="0" aria-label="Audio timeline" />
+            <button id="audio-mute-btn" class="audio-control-btn audio-icon-btn" type="button" aria-label="Mute audio" title="Mute audio">
+              <svg id="audio-volume-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M5 10h4l5-4v12l-5-4H5z" />
+                <path d="M17 9c1.6 1.6 1.6 4.4 0 6" />
+                <path d="M19.5 6.5c3 3 3 8 0 11" />
+              </svg>
+            </button>
+          </div>
+          <audio id="audio-player" class="audio-player hidden" preload="metadata"></audio>
+        </section>
+
+        <section id="setup-panel" class="panel setup-panel">
+          <div id="speaker-editor-panel" class="prompt-row speaker-row">
+            <div class="prompt-copy compact-prompt-copy">
+              <p class="section-kicker">Speakers Names</p>
+            </div>
+            <div class="speaker-form-wrap">
+              <div id="speaker-fields" class="speaker-fields"></div>
+            </div>
+            <div class="speaker-actions compact-speaker-actions">
+              <button id="speaker-confirm-btn" class="ghost-btn prompt-check-btn icon-btn" type="button" aria-label="Save speaker names" title="Save speaker names">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M5 12.5l4.2 4.2L19 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <p id="speaker-status" class="prompt-status hidden" aria-live="polite"></p>
+        </section>
+
+        <section class="panel transcript-panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Transcript</p>
+              <h2>Sound bites</h2>
+              <p id="transcript-summary" class="summary-copy"></p>
+            </div>
+            <div class="filter-wrap">
+              <div class="transcript-actions">
+                <button id="undo-btn" class="ghost-btn icon-btn topbar-icon-btn" type="button" aria-label="Undo" title="Undo">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M9.2 7.3L5.3 11.2l3.9 3.9" />
+                    <path d="M6 11.2h5.8c4.2 0 6.9 2.6 6.9 6.7" />
+                  </svg>
+                </button>
+                <button id="redo-btn" class="ghost-btn icon-btn topbar-icon-btn" type="button" aria-label="Redo" title="Redo">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M14.8 7.3l3.9 3.9-3.9 3.9" />
+                    <path d="M18 11.2h-5.8c-4.2 0-6.9 2.6-6.9 6.7" />
+                  </svg>
+                </button>
+                <button id="save-btn" class="primary-btn icon-btn topbar-icon-btn panel-save-btn" type="button" aria-label="Save" title="Save">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M5 4h11l3 3v13H5z" />
+                    <path d="M8 4v6h8V4" />
+                    <path d="M9 18h6" />
+                  </svg>
+                </button>
+                <div class="share-menu-wrap">
+                  <button id="share-btn" class="ghost-btn" type="button" aria-haspopup="true" aria-expanded="false">Share</button>
+                  <div id="share-menu" class="share-menu hidden" role="menu" aria-label="Share options">
+                    <button id="share-link-btn" class="share-option" type="button" role="menuitem">
+                      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M14 5h5v5" />
+                        <path d="M10 14L19 5" />
+                        <path d="M19 13v5H5V5h5" />
+                      </svg>
+                      <span>Share</span>
+                    </button>
+                    <button id="download-pdf-btn" class="share-option" type="button" role="menuitem">
+                      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M7 3h8l4 4v14H7z" />
+                        <path d="M15 3v5h4" />
+                        <path d="M12 10v6" />
+                        <path d="M9.5 13.5L12 16l2.5-2.5" />
+                      </svg>
+                      <span>Download a PDF</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <button id="filter-btn" class="ghost-btn filter-btn" type="button" aria-haspopup="true" aria-expanded="false">Filter</button>
+              <div id="filter-menu" class="filter-menu hidden" role="menu" aria-label="Filter sound bites">
+                <label class="filter-option filter-option-red">
+                  <input class="filter-checkbox" type="checkbox" value="red" />
+                  <span>Must Have</span>
+                </label>
+                <label class="filter-option filter-option-yellow">
+                  <input class="filter-checkbox" type="checkbox" value="yellow" />
+                  <span>High Priority</span>
+                </label>
+                <label class="filter-option filter-option-green">
+                  <input class="filter-checkbox" type="checkbox" value="green" />
+                  <span>Good Bite</span>
+                </label>
+                <label class="filter-option">
+                  <input class="filter-checkbox" type="checkbox" value="unmarked" />
+                  <span>Unmarked</span>
+                </label>
+                <label class="filter-option">
+                  <input class="filter-checkbox" type="checkbox" value="comments" />
+                  <span>Comments</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <p id="status-message" class="status-message hidden"></p>
+          <p id="empty-state" class="empty-state hidden">No transcript bites were created from this file yet.</p>
+          <div id="bites-list" class="bites-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <template id="bite-template">
+      <article class="bite-card" draggable="true">
+        <div class="bite-header">
+          <div class="bite-label-group">
+            <span class="bite-order"></span>
+            <button class="timecode-btn" type="button"></button>
+            <span class="speaker-chip hidden"></span>
+          </div>
+        </div>
+
+        <div class="bite-text-wrap">
+          <div class="text-format-toolbar" role="group" aria-label="Format transcript text">
+            <button class="text-format-btn icon-btn" data-format="bold" type="button" aria-label="Bold" title="Bold">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <text x="12" y="16" text-anchor="middle" font-size="14" font-weight="700" font-family="Arial, sans-serif">B</text>
+              </svg>
+            </button>
+            <button class="text-format-btn icon-btn" data-format="underline" type="button" aria-label="Underline" title="Underline">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M8 5v6a4 4 0 0 0 8 0V5" />
+                <path d="M6 19h12" />
+              </svg>
+            </button>
+            <button class="text-format-btn icon-btn" data-format="strikethrough" type="button" aria-label="Strikethrough" title="Strikethrough">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M7 7.5c.9-1.6 2.6-2.5 4.9-2.5 2.8 0 4.8 1.3 4.8 3.4 0 1.3-.9 2.2-2.6 2.8l-4.2 1.3c-1.9.6-2.9 1.5-2.9 2.9 0 2.2 2 3.6 5 3.6 2.4 0 4.1-.8 5-2.4" />
+                <path d="M4 12h16" />
+              </svg>
+            </button>
+            <button class="text-format-btn icon-btn" data-format="uppercase" type="button" aria-label="All caps" title="All caps">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <text x="12" y="15.5" text-anchor="middle" font-size="9.5" font-weight="700" font-family="Arial, sans-serif">TT</text>
+              </svg>
+            </button>
+          </div>
+          <div
+            class="bite-text"
+            contenteditable="true"
+            role="textbox"
+            aria-label="Transcript text"
+            aria-multiline="true"
+            spellcheck="true"
+            tabindex="0"
+          ></div>
+        </div>
+        <div class="producer-note-block">
+          <button class="producer-note-toggle" type="button">+ Producer Notes</button>
+          <label class="sr-only">Producer notes</label>
+          <div class="producer-note-input-wrap hidden">
+            <textarea class="producer-note-input" rows="1" spellcheck="true" placeholder="Producer Notes"></textarea>
+            <button class="producer-note-confirm" type="button" aria-label="Done editing producer note" tabindex="-1">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M20 7 10 17l-5-5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="bite-toolbar">
+          <div class="tone-group" role="group" aria-label="Highlight sound bite">
+            <button class="tone-btn tone-red" data-tone="red" type="button">Must Have</button>
+            <button class="tone-btn tone-yellow" data-tone="yellow" type="button">High Priority</button>
+            <button class="tone-btn tone-green" data-tone="green" type="button">Good Bite</button>
+          </div>
+
+          <div class="bite-actions">
+            <button class="mini-btn move-up-btn icon-btn" type="button" aria-label="Move sound bite up" title="Move sound bite up">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 18V6" />
+                <path d="M7 11l5-5 5 5" />
+              </svg>
+            </button>
+            <button class="mini-btn move-down-btn icon-btn" type="button" aria-label="Move sound bite down" title="Move sound bite down">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 6v12" />
+                <path d="M7 13l5 5 5-5" />
+              </svg>
+            </button>
+            <button class="mini-btn delete-btn icon-btn" type="button" aria-label="Delete sound bite" title="Delete sound bite">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M9 3h6" />
+                <path d="M4 6h16" />
+                <path d="M7 6v13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6" />
+                <path d="M10 10v7" />
+                <path d="M14 10v7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="/app.js?v=20260324a"></script>
+  </body>
+</html>
