@@ -8,7 +8,7 @@ const SESSION_DB_NAME = 'interview-timestamps-editor';
 const SESSION_STORE_NAME = 'sessions';
 const SESSION_RECORD_KEY = 'current';
 const MAX_SPEAKERS = 10;
-const FILTER_VALUES = ['red', 'yellow', 'green', 'unmarked', 'comments'];
+const FILTER_VALUES = ['red', 'yellow', 'green', 'comments'];
 
 const state = {
   audioBlob: null,
@@ -29,6 +29,9 @@ const state = {
   speakerStatus: '',
   speakerEditorOpen: true,
   activeFilters: [],
+  searchOpen: false,
+  searchQuery: '',
+  activeSearchResultIndex: 0,
   hasUnsavedChanges: false,
   saveStatus: ''
 };
@@ -58,6 +61,14 @@ const speakerStatus = document.querySelector('#speaker-status');
 const filterBtn = document.querySelector('#filter-btn');
 const filterMenu = document.querySelector('#filter-menu');
 const filterCheckboxes = Array.from(document.querySelectorAll('.filter-checkbox'));
+const searchBtn = document.querySelector('#search-btn');
+const searchPanel = document.querySelector('#search-panel');
+const searchInlineRow = document.querySelector('.search-inline-row');
+const searchInput = document.querySelector('#search-input');
+const searchResultsStatus = document.querySelector('#search-results-status');
+const searchPrevBtn = document.querySelector('#search-prev-btn');
+const searchNextBtn = document.querySelector('#search-next-btn');
+const searchCloseBtn = document.querySelector('#search-close-btn');
 const audioFileName = document.querySelector('#audio-file-name');
 const transcriptFileName = document.querySelector('#transcript-file-name');
 const audioPlayer = document.querySelector('#audio-player');
@@ -73,6 +84,13 @@ const emptyState = document.querySelector('#empty-state');
 const bitesList = document.querySelector('#bites-list');
 const biteTemplate = document.querySelector('#bite-template');
 const landingStatusMessage = document.querySelector('#landing-status-message');
+const shareDialog = document.querySelector('#share-dialog');
+const shareDialogLink = document.querySelector('#share-dialog-link');
+const shareDialogCloseBtn = document.querySelector('#share-dialog-close-btn');
+const shareDialogCopyBtn = document.querySelector('#share-dialog-copy-btn');
+const startOverDialog = document.querySelector('#start-over-dialog');
+const startOverDialogCancelBtn = document.querySelector('#start-over-dialog-cancel-btn');
+const startOverDialogConfirmBtn = document.querySelector('#start-over-dialog-confirm-btn');
 
 const undoStack = [];
 const redoStack = [];
@@ -90,6 +108,11 @@ let activeAudioObjectUrl = '';
 let activeTextEditorId = '';
 let remoteSyncTimerId = 0;
 let remoteSyncInFlight = false;
+let isShareDialogOpen = false;
+let shareDialogUrl = '';
+let isStartOverDialogOpen = false;
+let lastFocusedElement = null;
+let shouldScrollToSearchResult = false;
 
 audioUploadBtn.addEventListener('click', () => audioInput.click());
 transcriptUploadBtn.addEventListener('click', () => transcriptInput.click());
@@ -117,6 +140,12 @@ downloadPdfBtn.addEventListener('click', () => {
   renderShareMenu();
   void downloadTranscriptPdf();
 });
+shareDialogCloseBtn.addEventListener('click', () => {
+  closeShareDialog();
+});
+shareDialogCopyBtn.addEventListener('click', () => {
+  void copyShareDialogLink();
+});
 
 filterBtn.addEventListener('click', () => {
   isFilterMenuOpen = !isFilterMenuOpen;
@@ -127,9 +156,55 @@ filterBtn.addEventListener('click', () => {
   renderShareMenu();
 });
 
+searchBtn.addEventListener('click', () => {
+  state.searchOpen = true;
+  shouldScrollToSearchResult = Boolean(String(state.searchQuery || '').trim());
+  render();
+  window.requestAnimationFrame(() => {
+    searchInput.focus();
+    searchInput.select();
+  });
+});
+
+searchInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  closeSearchControls();
+});
+
+searchCloseBtn.addEventListener('click', () => {
+  closeSearchControls();
+});
+
+searchInput.addEventListener('input', (event) => {
+  state.searchQuery = event.target.value;
+  state.activeSearchResultIndex = 0;
+  shouldScrollToSearchResult = Boolean(String(state.searchQuery || '').trim());
+  render();
+});
+
+searchPrevBtn.addEventListener('click', () => {
+  const visibleBites = getVisibleBites();
+  const matches = buildSearchMatches(visibleBites, state.searchQuery);
+  if (!matches.length) return;
+  state.activeSearchResultIndex = (state.activeSearchResultIndex - 1 + matches.length) % matches.length;
+  shouldScrollToSearchResult = true;
+  render();
+});
+
+searchNextBtn.addEventListener('click', () => {
+  const visibleBites = getVisibleBites();
+  const matches = buildSearchMatches(visibleBites, state.searchQuery);
+  if (!matches.length) return;
+  state.activeSearchResultIndex = (state.activeSearchResultIndex + 1) % matches.length;
+  shouldScrollToSearchResult = true;
+  render();
+});
+
 for (const checkbox of filterCheckboxes) {
   checkbox.addEventListener('change', () => {
     state.activeFilters = filterCheckboxes.filter((input) => input.checked).map((input) => input.value);
+    shouldScrollToSearchResult = state.searchOpen && Boolean(String(state.searchQuery || '').trim());
     updateDirtyState();
     render();
   });
@@ -271,11 +346,30 @@ speakerSummaryBtn.addEventListener('click', () => {
 });
 
 startOverBtn.addEventListener('click', async () => {
-  if (!window.confirm('Clear the uploaded audio, transcript, project name, speaker names, and saved progress?')) return;
-  await resetWorkspace();
+  openStartOverDialog();
+});
+startOverDialogCancelBtn.addEventListener('click', () => {
+  closeStartOverDialog();
+});
+startOverDialogConfirmBtn.addEventListener('click', () => {
+  void confirmStartOver();
 });
 
 window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    if (isShareDialogOpen) {
+      event.preventDefault();
+      closeShareDialog();
+      return;
+    }
+
+    if (isStartOverDialogOpen) {
+      event.preventDefault();
+      closeStartOverDialog();
+      return;
+    }
+  }
+
   const metaKeyPressed = event.metaKey || event.ctrlKey;
   if (!metaKeyPressed) return;
 
@@ -318,6 +412,12 @@ document.addEventListener('click', (event) => {
   if (!shareMenu.contains(event.target) && !shareBtn.contains(event.target)) {
     isShareMenuOpen = false;
     renderShareMenu();
+  }
+  if (isShareDialogOpen && event.target === shareDialog) {
+    closeShareDialog();
+  }
+  if (isStartOverDialogOpen && event.target === startOverDialog) {
+    closeStartOverDialog();
   }
 });
 
@@ -452,6 +552,8 @@ function render() {
 
   renderTopControls(isReady);
   syncAudioControls();
+  renderShareDialog();
+  renderStartOverDialog();
 
   if (!isReady) return;
 
@@ -460,6 +562,9 @@ function render() {
   renderFilterMenu();
 
   const visibleBites = getVisibleBites();
+  const searchMatches = buildSearchMatches(visibleBites, state.searchQuery);
+  syncSearchState(searchMatches);
+  renderSearchControls(searchMatches);
   transcriptSummary.textContent = buildTranscriptSummary(visibleBites.length, state.bites.length);
 
   if (state.transcriptWarning) {
@@ -472,7 +577,16 @@ function render() {
 
   emptyState.textContent = state.bites.length > 0 ? 'No sound bites match the selected filters.' : 'No transcript bites were created from this file yet.';
   emptyState.classList.toggle('hidden', visibleBites.length > 0);
-  renderBites(visibleBites);
+  renderBites(visibleBites, searchMatches);
+
+  if (shouldScrollToSearchResult && searchMatches.length) {
+    shouldScrollToSearchResult = false;
+    window.requestAnimationFrame(() => {
+      scrollToActiveSearchResult(searchMatches);
+    });
+  } else if (shouldScrollToSearchResult) {
+    shouldScrollToSearchResult = false;
+  }
 }
 
 function syncAudioControls() {
@@ -544,6 +658,33 @@ function renderFilterMenu() {
   for (const checkbox of filterCheckboxes) {
     checkbox.checked = state.activeFilters.includes(checkbox.value);
   }
+}
+
+function renderSearchControls(searchMatches = []) {
+  searchBtn.setAttribute('aria-expanded', String(state.searchOpen));
+  searchPanel.classList.toggle('hidden', !state.searchOpen);
+  searchInlineRow.classList.toggle('search-open', state.searchOpen);
+  searchInput.value = state.searchQuery;
+
+  const hasQuery = Boolean(String(state.searchQuery || '').trim());
+  if (!hasQuery) {
+    searchResultsStatus.textContent = '0 results';
+  } else if (!searchMatches.length) {
+    searchResultsStatus.textContent = '0 results';
+  } else {
+    searchResultsStatus.textContent = `${state.activeSearchResultIndex + 1}/${searchMatches.length} results`;
+  }
+
+  searchPrevBtn.disabled = searchMatches.length <= 1;
+  searchNextBtn.disabled = searchMatches.length <= 1;
+}
+
+function closeSearchControls() {
+  state.searchOpen = false;
+  state.searchQuery = '';
+  state.activeSearchResultIndex = 0;
+  shouldScrollToSearchResult = false;
+  render();
 }
 
 function renderShareMenu() {
@@ -658,10 +799,11 @@ function renderSpeakerFields() {
   }
 }
 
-function renderBites(visibleBites = state.bites) {
+function renderBites(visibleBites = state.bites, searchMatches = []) {
   bitesList.replaceChildren();
   textSelectionRanges.clear();
   activeTextEditorId = '';
+  const matchesByBiteId = buildMatchesByBiteId(searchMatches);
 
   for (const [index, bite] of visibleBites.entries()) {
     const fragment = biteTemplate.content.cloneNode(true);
@@ -675,6 +817,7 @@ function renderBites(visibleBites = state.bites) {
     const producerNoteToggle = fragment.querySelector('.producer-note-toggle');
     const producerNoteInputWrap = fragment.querySelector('.producer-note-input-wrap');
     const producerNoteInput = fragment.querySelector('.producer-note-input');
+    const producerNoteRemove = fragment.querySelector('.producer-note-remove');
     const producerNoteConfirm = fragment.querySelector('.producer-note-confirm');
     const toneButtons = Array.from(fragment.querySelectorAll('.tone-btn'));
     const moveUpBtn = fragment.querySelector('.move-up-btn');
@@ -706,9 +849,18 @@ function renderBites(visibleBites = state.bites) {
     }
 
     editor.dataset.placeholder = 'Transcript text';
-    editor.innerHTML = getBiteTextHtml(bite);
+    const biteSearchMatches = matchesByBiteId.get(bite.id) || [];
+    editor.innerHTML = buildHighlightedBiteHtml(bite, biteSearchMatches);
     syncBiteTextPlaceholder(editor);
     syncTextFormatToolbarState(editor, bite.id);
+
+    if (biteSearchMatches.length) {
+      card.classList.add('has-search-match');
+    }
+
+    if (biteSearchMatches.some((match) => match.resultIndex === state.activeSearchResultIndex)) {
+      card.classList.add('has-active-search-match');
+    }
 
     const activateTextEditor = () => {
       activeTextEditorId = bite.id;
@@ -796,25 +948,34 @@ function renderBites(visibleBites = state.bites) {
     }
 
     producerNoteToggle.addEventListener('click', () => {
-      bite.notesOpen = bite.notesOpen !== true;
+      bite.notesOpen = true;
       render();
     });
 
-    producerNoteToggle.classList.toggle('hidden', bite.notesOpen === true);
-    producerNoteInputWrap.classList.toggle('hidden', bite.notesOpen !== true);
-    producerNoteInput.value = Array.isArray(bite.comments) ? bite.comments[0] || '' : '';
+    const noteValue = Array.isArray(bite.comments) ? bite.comments[0] || '' : '';
+    const hasProducerNote = hasTextContent(noteValue);
+    const noteVisible = bite.notesOpen === true || hasProducerNote;
+
+    producerNoteToggle.classList.toggle('hidden', noteVisible);
+    producerNoteInputWrap.classList.toggle('hidden', !noteVisible);
+    producerNoteInput.value = noteValue;
+    producerNoteInputWrap.dataset.committedValue = noteValue;
     syncProducerNoteState(producerNoteInputWrap, producerNoteInput.value);
     producerNoteInput.addEventListener('input', (event) => {
       handleProducerNoteEdit(bite.id, event.target.value);
       syncProducerNoteState(producerNoteInputWrap, event.target.value);
+      syncProducerNoteDirtyState(producerNoteInputWrap, event.target.value);
     });
     producerNoteInput.addEventListener('focus', () => {
       bite.notesOpen = true;
       producerNoteInputWrap.classList.add('is-editing');
       syncProducerNoteState(producerNoteInputWrap, producerNoteInput.value);
+      syncProducerNoteDirtyState(producerNoteInputWrap, producerNoteInput.value);
     });
     producerNoteInput.addEventListener('blur', () => {
       producerNoteInputWrap.classList.remove('is-editing');
+      producerNoteInputWrap.classList.remove('is-dirty');
+      producerNoteInputWrap.dataset.committedValue = producerNoteInput.value;
       syncProducerNoteState(producerNoteInputWrap, producerNoteInput.value);
     });
     producerNoteInput.addEventListener('keydown', handleEditableSaveOnEnter);
@@ -822,6 +983,15 @@ function renderBites(visibleBites = state.bites) {
       event.preventDefault();
       producerNoteInput.blur();
       queueSaveSession();
+    });
+    producerNoteRemove.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      pushUndoState();
+      bite.comments = [];
+      bite.notesOpen = false;
+      state.saveStatus = '';
+      updateDirtyState();
+      render();
     });
 
     for (const button of toneButtons) {
@@ -864,6 +1034,127 @@ function renderBites(visibleBites = state.bites) {
   syncPlaybackHighlight();
 }
 
+function syncSearchState(searchMatches) {
+  if (!searchMatches.length) {
+    state.activeSearchResultIndex = 0;
+    return;
+  }
+
+  state.activeSearchResultIndex = Math.max(0, Math.min(state.activeSearchResultIndex, searchMatches.length - 1));
+}
+
+function buildSearchMatches(visibleBites, rawQuery) {
+  const query = String(rawQuery || '').trim().toLowerCase();
+  if (!query) return [];
+
+  const matches = [];
+
+  for (const bite of visibleBites) {
+    const plainText = getPlainTextFromRichTextHtml(getBiteTextHtml(bite)).replace(/\u00a0/g, ' ');
+    const haystack = plainText.toLowerCase();
+    let fromIndex = 0;
+
+    while (fromIndex < haystack.length) {
+      const matchIndex = haystack.indexOf(query, fromIndex);
+      if (matchIndex === -1) break;
+      matches.push({
+        biteId: bite.id,
+        start: matchIndex,
+        end: matchIndex + query.length,
+        resultIndex: matches.length
+      });
+      fromIndex = matchIndex + Math.max(query.length, 1);
+    }
+  }
+
+  return matches;
+}
+
+function buildMatchesByBiteId(searchMatches) {
+  const matchesByBiteId = new Map();
+  for (const match of searchMatches) {
+    if (!matchesByBiteId.has(match.biteId)) {
+      matchesByBiteId.set(match.biteId, []);
+    }
+    matchesByBiteId.get(match.biteId).push(match);
+  }
+  return matchesByBiteId;
+}
+
+function buildHighlightedBiteHtml(bite, biteSearchMatches) {
+  const baseHtml = getBiteTextHtml(bite);
+  if (!biteSearchMatches.length) {
+    return baseHtml;
+  }
+
+  const template = document.createElement('template');
+  template.innerHTML = baseHtml;
+  const textNodes = [];
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+
+  let currentNode = walker.nextNode();
+  while (currentNode) {
+    textNodes.push(currentNode);
+    currentNode = walker.nextNode();
+  }
+
+  let textOffset = 0;
+
+  for (const node of textNodes) {
+    const text = node.textContent || '';
+    const nodeStart = textOffset;
+    const nodeEnd = nodeStart + text.length;
+    textOffset = nodeEnd;
+
+    const overlappingMatches = biteSearchMatches.filter((match) => match.start < nodeEnd && match.end > nodeStart);
+    if (!overlappingMatches.length) continue;
+
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+
+    for (const match of overlappingMatches) {
+      const localStart = Math.max(0, match.start - nodeStart);
+      const localEnd = Math.min(text.length, match.end - nodeStart);
+
+      if (localStart > cursor) {
+        fragment.append(document.createTextNode(text.slice(cursor, localStart)));
+      }
+
+      const mark = document.createElement('mark');
+      mark.className = 'search-highlight';
+      if (match.resultIndex === state.activeSearchResultIndex) {
+        mark.classList.add('search-highlight-active');
+        mark.dataset.activeSearchResult = 'true';
+      }
+      mark.textContent = text.slice(localStart, localEnd);
+      fragment.append(mark);
+      cursor = localEnd;
+    }
+
+    if (cursor < text.length) {
+      fragment.append(document.createTextNode(text.slice(cursor)));
+    }
+
+    node.parentNode?.replaceChild(fragment, node);
+  }
+
+  return template.innerHTML;
+}
+
+function scrollToActiveSearchResult(searchMatches) {
+  const activeMatch = searchMatches[state.activeSearchResultIndex];
+  if (!activeMatch) return;
+
+  const activeHighlight = bitesList.querySelector('[data-active-search-result="true"]');
+  if (activeHighlight) {
+    activeHighlight.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    return;
+  }
+
+  const activeCard = bitesList.querySelector(`.bite-card[data-id="${activeMatch.biteId}"]`);
+  activeCard?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+}
+
 function getVisibleBites() {
   if (!state.activeFilters.length) {
     return state.bites;
@@ -874,12 +1165,8 @@ function getVisibleBites() {
 
 function biteMatchesFilters(bite) {
   return state.activeFilters.some((filter) => {
-    if (filter === 'unmarked') {
-      return !bite.tone || bite.tone === 'none';
-    }
-
     if (filter === 'comments') {
-      return Array.isArray(bite.comments) && bite.comments.length > 0;
+      return Array.isArray(bite.comments) && bite.comments.some((entry) => hasTextContent(entry));
     }
 
     return bite.tone === filter;
@@ -1318,6 +1605,13 @@ function syncProducerNoteState(wrapper, value) {
   wrapper.classList.toggle('has-note', hasTextContent(value));
 }
 
+function syncProducerNoteDirtyState(wrapper, value) {
+  if (!wrapper) return;
+  const committedValue = String(wrapper.dataset.committedValue || '').replace(/\r\n/g, '\n');
+  const nextValue = String(value || '').replace(/\r\n/g, '\n');
+  wrapper.classList.toggle('is-dirty', nextValue !== committedValue);
+}
+
 function hasTextContent(value) {
   return Boolean(collapseWhitespace(String(value || '')));
 }
@@ -1659,17 +1953,98 @@ async function shareProjectLink() {
     }
 
     const shareUrl = buildShareUrl(state.shareProjectId);
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-      }
-    } catch {
-      // Keep going and show the link either way.
-    }
-
-    window.prompt('Copy this project link', shareUrl);
+    openShareDialog(shareUrl);
   } catch (error) {
     window.alert(error instanceof Error ? error.message : 'Could not create share link.');
+  }
+}
+
+function renderShareDialog() {
+  shareDialog.classList.toggle('hidden', !isShareDialogOpen);
+  document.body.classList.toggle('dialog-open', isShareDialogOpen || isStartOverDialogOpen);
+  shareDialogLink.value = shareDialogUrl;
+}
+
+function openShareDialog(url) {
+  shareDialogUrl = url;
+  isShareDialogOpen = true;
+  lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  renderShareDialog();
+  window.requestAnimationFrame(() => {
+    shareDialogCopyBtn.focus();
+  });
+}
+
+function closeShareDialog() {
+  if (!isShareDialogOpen) return;
+  isShareDialogOpen = false;
+  renderShareDialog();
+  if (lastFocusedElement instanceof HTMLElement) {
+    lastFocusedElement.focus();
+  }
+}
+
+async function copyShareDialogLink() {
+  if (!shareDialogUrl) return;
+  await copyTextToClipboard(shareDialogUrl);
+}
+
+function renderStartOverDialog() {
+  startOverDialog.classList.toggle('hidden', !isStartOverDialogOpen);
+  document.body.classList.toggle('dialog-open', isShareDialogOpen || isStartOverDialogOpen);
+}
+
+function openStartOverDialog() {
+  isStartOverDialogOpen = true;
+  lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  renderStartOverDialog();
+  window.requestAnimationFrame(() => {
+    startOverDialogConfirmBtn.focus();
+  });
+}
+
+function closeStartOverDialog() {
+  if (!isStartOverDialogOpen) return;
+  isStartOverDialogOpen = false;
+  renderStartOverDialog();
+  if (lastFocusedElement instanceof HTMLElement) {
+    lastFocusedElement.focus();
+  }
+}
+
+async function confirmStartOver() {
+  closeStartOverDialog();
+  await resetWorkspace();
+}
+
+async function copyTextToClipboard(value) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Fall back to execCommand below.
+  }
+
+  const helper = document.createElement('textarea');
+  helper.value = value;
+  helper.setAttribute('readonly', '');
+  helper.style.position = 'fixed';
+  helper.style.top = '0';
+  helper.style.left = '0';
+  helper.style.opacity = '0';
+  helper.style.pointerEvents = 'none';
+  document.body.append(helper);
+  helper.select();
+  helper.setSelectionRange(0, helper.value.length);
+
+  try {
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    helper.remove();
   }
 }
 

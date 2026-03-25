@@ -27,8 +27,8 @@
 
       <section id="workspace" class="workspace hidden" aria-live="polite">
         <section class="panel audio-panel">
-          <div class="section-heading">
-            <div>
+          <div class="section-heading audio-heading">
+            <div class="audio-heading-copy">
               <button id="project-title-btn" class="project-title-btn" type="button" aria-label="Edit project name"></button>
               <input id="project-title-input" class="project-title-input hidden" type="text" aria-label="Project name" />
               <button id="speaker-summary-btn" class="speaker-summary-btn hidden" type="button" aria-label="Edit speaker names"></button>
@@ -76,13 +76,13 @@
         </section>
 
         <section class="panel transcript-panel">
-          <div class="section-heading">
-            <div>
+          <div class="section-heading transcript-heading">
+            <div class="transcript-heading-copy">
               <p class="section-kicker">Transcript</p>
               <h2>Sound bites</h2>
               <p id="transcript-summary" class="summary-copy"></p>
             </div>
-            <div class="filter-wrap">
+            <div class="filter-wrap transcript-heading-actions">
               <div class="transcript-actions">
                 <button id="undo-btn" class="ghost-btn icon-btn topbar-icon-btn" type="button" aria-label="Undo" title="Undo">
                   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -125,35 +125,64 @@
                     </button>
                   </div>
                 </div>
+                <div class="filter-menu-wrap">
+                  <button id="filter-btn" class="ghost-btn filter-btn" type="button" aria-haspopup="true" aria-expanded="false">Filter</button>
+                  <div id="filter-menu" class="filter-menu hidden" role="menu" aria-label="Filter sound bites">
+                    <label class="filter-option filter-option-red">
+                      <input class="filter-checkbox" type="checkbox" value="red" />
+                      <span>Must Have</span>
+                    </label>
+                    <label class="filter-option filter-option-yellow">
+                      <input class="filter-checkbox" type="checkbox" value="yellow" />
+                      <span>High Priority</span>
+                    </label>
+                    <label class="filter-option filter-option-green">
+                      <input class="filter-checkbox" type="checkbox" value="green" />
+                      <span>Good Bite</span>
+                    </label>
+                    <label class="filter-option">
+                      <input class="filter-checkbox" type="checkbox" value="comments" />
+                      <span>Producer Notes</span>
+                    </label>
+                  </div>
+                </div>
               </div>
-              <button id="filter-btn" class="ghost-btn filter-btn" type="button" aria-haspopup="true" aria-expanded="false">Filter</button>
-              <div id="filter-menu" class="filter-menu hidden" role="menu" aria-label="Filter sound bites">
-                <label class="filter-option filter-option-red">
-                  <input class="filter-checkbox" type="checkbox" value="red" />
-                  <span>Must Have</span>
-                </label>
-                <label class="filter-option filter-option-yellow">
-                  <input class="filter-checkbox" type="checkbox" value="yellow" />
-                  <span>High Priority</span>
-                </label>
-                <label class="filter-option filter-option-green">
-                  <input class="filter-checkbox" type="checkbox" value="green" />
-                  <span>Good Bite</span>
-                </label>
-                <label class="filter-option">
-                  <input class="filter-checkbox" type="checkbox" value="unmarked" />
-                  <span>Unmarked</span>
-                </label>
-                <label class="filter-option">
-                  <input class="filter-checkbox" type="checkbox" value="comments" />
-                  <span>Comments</span>
-                </label>
+              <div class="search-controls-stack">
+                <div class="search-inline-row">
+                  <div id="search-panel" class="search-panel hidden">
+                    <label class="sr-only" for="search-input">Search transcript</label>
+                    <input id="search-input" class="search-input" type="search" placeholder="Search transcript" autocomplete="off" spellcheck="false" />
+                    <div class="search-results-cluster">
+                      <span id="search-results-status" class="search-results-status">0 results</span>
+                      <div class="search-results-nav">
+                        <button id="search-prev-btn" class="search-nav-btn icon-btn" type="button" aria-label="Previous result" title="Previous result">
+                          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M7 14l5-5 5 5" />
+                          </svg>
+                        </button>
+                        <button id="search-next-btn" class="search-nav-btn icon-btn" type="button" aria-label="Next result" title="Next result">
+                          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M7 10l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </div>
+                      <button id="search-close-btn" class="search-close-btn icon-btn" type="button" aria-label="Close search" title="Close search">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                          <path d="M7 7l10 10" />
+                          <path d="M17 7 7 17" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <button id="search-btn" class="ghost-btn filter-btn search-btn" type="button" aria-expanded="false" aria-controls="search-panel">Search</button>
+                </div>
               </div>
             </div>
           </div>
 
           <p id="status-message" class="status-message hidden"></p>
           <p id="empty-state" class="empty-state hidden">No transcript bites were created from this file yet.</p>
+          <div class="transcript-divider" aria-hidden="true"></div>
           <div id="bites-list" class="bites-list"></div>
         </section>
       </section>
@@ -214,6 +243,12 @@
                 <path d="M20 7 10 17l-5-5" />
               </svg>
             </button>
+            <button class="producer-note-remove" type="button" aria-label="Delete producer note" tabindex="-1">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M7 7l10 10" />
+                <path d="M17 7 7 17" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -250,6 +285,27 @@
         </div>
       </article>
     </template>
+
+    <div id="share-dialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="share-dialog-label">
+      <div class="dialog-card">
+        <label id="share-dialog-label" class="dialog-field" for="share-dialog-link">Share link</label>
+        <input id="share-dialog-link" class="dialog-input" type="text" readonly />
+        <div class="dialog-actions">
+          <button id="share-dialog-close-btn" class="ghost-btn" type="button">Close</button>
+          <button id="share-dialog-copy-btn" class="primary-btn" type="button">Copy share link</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="start-over-dialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="start-over-dialog-label">
+      <div class="dialog-card">
+        <p id="start-over-dialog-label" class="dialog-field">Start over</p>
+        <div class="dialog-actions">
+          <button id="start-over-dialog-cancel-btn" class="ghost-btn" type="button">Cancel</button>
+          <button id="start-over-dialog-confirm-btn" class="primary-btn" type="button">Start over</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="/app.js?v=20260324a"></script>
   </body>
