@@ -594,7 +594,8 @@ code {
 }
 
 .search-controls-stack {
-  width: auto;
+  display: block;
+  width: 100%;
 }
 
 .filter-btn {
@@ -605,7 +606,7 @@ code {
   display: flex;
   justify-content: flex-end;
   align-items: stretch;
-  width: auto;
+  width: 100%;
 }
 
 .search-btn {
