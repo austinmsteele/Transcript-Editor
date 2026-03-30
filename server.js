@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename);
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 4173);
 const DEFAULT_DATA_DIR = process.env.DATA_DIR || path.join(__dirname, ".data");
+const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS || 10000);
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 const PROJECT_ID_PATTERN = /^[a-z0-9-]{8,}$/i;
 const STATIC_MIME_TYPES = {
@@ -139,7 +140,61 @@ export function startServer(options = {}) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
-  startServer();
+  const server = startServer();
+  installGracefulShutdown(server);
+}
+
+function installGracefulShutdown(
+  server,
+  { signals = ["SIGTERM", "SIGINT"], shutdownTimeoutMs = SHUTDOWN_TIMEOUT_MS } = {},
+) {
+  let isShuttingDown = false;
+  const cleanupHandlers = [];
+
+  const shutdown = (signal) => {
+    if (isShuttingDown) {
+      return;
+    }
+
+    isShuttingDown = true;
+    console.log(`${signal} received, shutting down gracefully.`);
+
+    const forceCloseTimer = setTimeout(() => {
+      console.error(`Graceful shutdown timed out after ${shutdownTimeoutMs}ms.`);
+      if (typeof server.closeAllConnections === "function") {
+        server.closeAllConnections();
+      }
+      process.exit(1);
+    }, shutdownTimeoutMs);
+    forceCloseTimer.unref?.();
+
+    server.close((error) => {
+      clearTimeout(forceCloseTimer);
+      for (const cleanup of cleanupHandlers) {
+        cleanup();
+      }
+
+      if (error) {
+        console.error("Error while shutting down the server.", error);
+        process.exit(1);
+        return;
+      }
+
+      process.exit(0);
+    });
+
+    if (typeof server.closeIdleConnections === "function") {
+      server.closeIdleConnections();
+    }
+  };
+
+  for (const signal of signals) {
+    const handler = () => shutdown(signal);
+    process.once(signal, handler);
+    cleanupHandlers.push(() => {
+      process.removeListener(signal, handler);
+    });
+  }
 }
 
 async function handleCreateProject(response, { projectsDir }) {

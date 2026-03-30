@@ -9,6 +9,7 @@ const SESSION_STORE_NAME = 'sessions';
 const SESSION_RECORD_KEY = 'current';
 const MAX_SPEAKERS = 10;
 const FILTER_VALUES = ['red', 'yellow', 'green', 'comments'];
+const PLAYBACK_RATE_OPTIONS = [1, 1.5, 2];
 
 const state = {
   audioBlob: null,
@@ -76,6 +77,7 @@ const audioPlayBtn = document.querySelector('#audio-play-btn');
 const audioPlayIcon = document.querySelector('#audio-play-icon');
 const audioMuteBtn = document.querySelector('#audio-mute-btn');
 const audioVolumeIcon = document.querySelector('#audio-volume-icon');
+const audioSpeedBtn = document.querySelector('#audio-speed-btn');
 const audioTimeLabel = document.querySelector('#audio-time-label');
 const audioScrubber = document.querySelector('#audio-scrubber');
 const transcriptSummary = document.querySelector('#transcript-summary');
@@ -212,17 +214,17 @@ for (const checkbox of filterCheckboxes) {
 
 audioPlayer.addEventListener('timeupdate', () => {
   syncAudioControls();
-  syncPlaybackHighlight();
+  syncPlaybackHighlight({ shouldScroll: true, scrollBehavior: 'smooth' });
 });
 
 audioPlayer.addEventListener('seeked', () => {
   syncAudioControls();
-  syncPlaybackHighlight();
+  syncPlaybackHighlight({ shouldScroll: true, scrollBehavior: 'smooth', forceScroll: true });
 });
 
 audioPlayer.addEventListener('play', () => {
   syncAudioControls();
-  syncPlaybackHighlight();
+  syncPlaybackHighlight({ shouldScroll: true, scrollBehavior: 'smooth', forceScroll: true });
 });
 
 audioPlayer.addEventListener('pause', () => {
@@ -248,6 +250,10 @@ audioPlayer.addEventListener('volumechange', () => {
   syncAudioControls();
 });
 
+audioPlayer.addEventListener('ratechange', () => {
+  syncAudioControls();
+});
+
 audioPlayBtn.addEventListener('click', () => {
   if (!audioPlayer.src) return;
   if (audioPlayer.paused) {
@@ -261,13 +267,18 @@ audioMuteBtn.addEventListener('click', () => {
   audioPlayer.muted = !audioPlayer.muted;
 });
 
+audioSpeedBtn.addEventListener('click', () => {
+  if (!audioPlayer.src) return;
+  cycleAudioPlaybackRate();
+});
+
 audioScrubber.addEventListener('input', (event) => {
   const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
   if (duration <= 0) return;
   const ratio = Math.max(0, Math.min(1, Number(event.target.value) || 0));
   audioPlayer.currentTime = duration * ratio;
   syncAudioControls();
-  syncPlaybackHighlight();
+  syncPlaybackHighlight({ shouldScroll: true, scrollBehavior: 'auto', forceScroll: true });
 });
 
 audioInput.addEventListener('change', async (event) => {
@@ -590,15 +601,31 @@ function render() {
 }
 
 function syncAudioControls() {
+  const hasAudioSource = Boolean(audioPlayer.src);
   const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
   const currentTime = Math.min(duration || 0, Math.max(0, Number(audioPlayer.currentTime) || 0));
   const ratio = duration > 0 ? currentTime / duration : 0;
   const progressPercent = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+  const playbackRate = hasAudioSource ? getNormalizedPlaybackRate(audioPlayer.playbackRate) : PLAYBACK_RATE_OPTIONS[0];
+  const playbackRateLabel = formatPlaybackRateLabel(playbackRate);
+  const nextPlaybackRateLabel = formatPlaybackRateLabel(getNextPlaybackRate(playbackRate));
 
+  audioPlayBtn.disabled = !hasAudioSource;
+  audioMuteBtn.disabled = !hasAudioSource;
+  audioSpeedBtn.disabled = !hasAudioSource;
   audioScrubber.disabled = !audioPlayer.src || duration <= 0;
   audioScrubber.value = String(ratio);
   audioScrubber.style.setProperty('--scrubber-progress', progressPercent);
   audioTimeLabel.textContent = `${formatPlayerTimestamp(currentTime)} / ${formatPlayerTimestamp(duration)}`;
+  audioSpeedBtn.textContent = playbackRateLabel;
+  audioSpeedBtn.setAttribute(
+    'aria-label',
+    hasAudioSource ? `Playback speed ${playbackRateLabel}. Click to switch to ${nextPlaybackRateLabel}.` : 'Playback speed'
+  );
+  audioSpeedBtn.setAttribute(
+    'title',
+    hasAudioSource ? `Playback speed ${playbackRateLabel}. Click to switch to ${nextPlaybackRateLabel}.` : 'Playback speed'
+  );
 
   if (audioPlayer.paused || audioPlayer.ended) {
     audioPlayBtn.setAttribute('aria-label', 'Play audio');
@@ -618,6 +645,44 @@ function syncAudioControls() {
   audioVolumeIcon.innerHTML = isMuted
     ? '<path d="M5 10h4l5-4v12l-5-4H5z"></path><path d="M17 9l4 6"></path><path d="M21 9l-4 6"></path>'
     : '<path d="M5 10h4l5-4v12l-5-4H5z"></path><path d="M17 9c1.6 1.6 1.6 4.4 0 6"></path><path d="M19.5 6.5c3 3 3 8 0 11"></path>';
+}
+
+function getNormalizedPlaybackRate(rate) {
+  const safeRate = Number(rate);
+  if (!Number.isFinite(safeRate) || safeRate <= 0) {
+    return PLAYBACK_RATE_OPTIONS[0];
+  }
+
+  let closestRate = PLAYBACK_RATE_OPTIONS[0];
+  let closestDelta = Math.abs(safeRate - closestRate);
+
+  for (const candidate of PLAYBACK_RATE_OPTIONS.slice(1)) {
+    const delta = Math.abs(safeRate - candidate);
+    if (delta < closestDelta) {
+      closestRate = candidate;
+      closestDelta = delta;
+    }
+  }
+
+  return closestRate;
+}
+
+function getNextPlaybackRate(currentRate) {
+  const normalizedRate = getNormalizedPlaybackRate(currentRate);
+  const currentIndex = PLAYBACK_RATE_OPTIONS.indexOf(normalizedRate);
+  const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % PLAYBACK_RATE_OPTIONS.length : 0;
+  return PLAYBACK_RATE_OPTIONS[nextIndex];
+}
+
+function formatPlaybackRateLabel(rate) {
+  return `${Number(rate)}X`;
+}
+
+function cycleAudioPlaybackRate() {
+  const nextPlaybackRate = getNextPlaybackRate(audioPlayer.playbackRate);
+  audioPlayer.defaultPlaybackRate = nextPlaybackRate;
+  audioPlayer.playbackRate = nextPlaybackRate;
+  syncAudioControls();
 }
 
 function formatPlayerTimestamp(totalSeconds) {
@@ -1181,13 +1246,73 @@ function buildTranscriptSummary(visibleCount, totalCount) {
   return `${visibleCount} of ${totalCount} sound ${totalCount === 1 ? 'bite' : 'bites'}`;
 }
 
-function syncPlaybackHighlight() {
+function syncPlaybackHighlight(options = {}) {
+  const {
+    shouldScroll = false,
+    scrollBehavior = 'smooth',
+    forceScroll = false
+  } = options;
+  const previousActiveBiteId = activePlaybackBiteId;
   const nextActiveBiteId = getActivePlaybackBiteId(audioPlayer.currentTime);
   activePlaybackBiteId = nextActiveBiteId;
+  let activeCard = null;
 
   for (const card of bitesList.querySelectorAll('.bite-card')) {
-    card.classList.toggle('is-playing', card.dataset.id === activePlaybackBiteId);
+    const isActive = card.dataset.id === activePlaybackBiteId;
+    card.classList.toggle('is-playing', isActive);
+    if (isActive) {
+      activeCard = card;
+    }
   }
+
+  if (!shouldScroll || !activeCard) {
+    return;
+  }
+
+  if (!forceScroll && previousActiveBiteId === activePlaybackBiteId) {
+    return;
+  }
+
+  scrollPlaybackBiteIntoView(activeCard, scrollBehavior);
+}
+
+function scrollPlaybackBiteIntoView(card, behavior = 'smooth') {
+  if (!card) return;
+
+  const hasScrollableTranscriptList = bitesList.scrollHeight > bitesList.clientHeight + 1;
+  if (hasScrollableTranscriptList && isPlaybackCardVisibleWithinTranscriptList(card)) {
+    return;
+  }
+
+  if (!hasScrollableTranscriptList && isPlaybackCardVisibleInViewport(card)) {
+    return;
+  }
+
+  card.scrollIntoView({ behavior, block: 'center', inline: 'nearest' });
+}
+
+function isPlaybackCardVisibleWithinTranscriptList(card) {
+  const containerRect = bitesList.getBoundingClientRect();
+  const cardRect = card.getBoundingClientRect();
+  if (!containerRect.height) {
+    return false;
+  }
+
+  const verticalPadding = Math.max(32, Math.min(96, containerRect.height * 0.18));
+  return cardRect.top >= containerRect.top + verticalPadding
+    && cardRect.bottom <= containerRect.bottom - verticalPadding;
+}
+
+function isPlaybackCardVisibleInViewport(card) {
+  const cardRect = card.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (!viewportHeight) {
+    return false;
+  }
+
+  const verticalPadding = Math.max(32, Math.min(120, viewportHeight * 0.18));
+  return cardRect.top >= verticalPadding
+    && cardRect.bottom <= viewportHeight - verticalPadding;
 }
 
 function getActivePlaybackBiteId(currentTimeSeconds) {

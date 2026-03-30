@@ -327,7 +327,7 @@ code {
 .audio-player-shell {
   margin-top: 1rem;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.9rem;
   padding: 0.75rem 1rem;
@@ -352,9 +352,18 @@ code {
   flex: 0 0 auto;
 }
 
+.audio-control-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
 .audio-control-btn:hover {
   transform: none;
   background: #e1e3e8;
+}
+
+.audio-control-btn:disabled:hover {
+  background: #e9eaee;
 }
 
 .audio-control-btn svg {
@@ -379,6 +388,16 @@ code {
   font-size: 0.95rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.audio-rate-btn {
+  width: auto;
+  min-width: 3.4rem;
+  padding: 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 .audio-scrubber {
@@ -1488,15 +1507,32 @@ button:disabled {
   }
 
   .audio-player-shell {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto auto auto;
     row-gap: 0.85rem;
   }
 
+  #audio-play-btn {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  #audio-mute-btn {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  #audio-speed-btn {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
   .audio-time-label {
-    grid-column: 2 / 3;
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .audio-scrubber {
     grid-column: 1 / -1;
+    grid-row: 3;
   }
 }

@@ -33,9 +33,13 @@ This repo now includes `render.yaml` for a Render web service.
 - Push this project to GitHub, GitLab, or Bitbucket.
 - In Render, create a new Blueprint instance from the repo.
 - Keep the included persistent disk enabled so shared project links and uploaded audio survive restarts and redeploys.
+- Render will install with `npm ci`, start with `npm start`, and check service health at `/health`.
+- The included Blueprint mounts persistent storage at `/var/data` and sets `DATA_DIR=/var/data` so uploaded audio and saved projects survive deploys.
 - Deploy, then open the generated `onrender.com` URL and share links from there.
 
 The server uses the `DATA_DIR` environment variable for shared project storage. The included Render config mounts a disk at `/var/data` and points `DATA_DIR` there automatically.
+
+The Node server also handles `SIGTERM` and `SIGINT` gracefully so Render restarts can finish in-flight requests before the process exits.
 
 ## Tests
 
